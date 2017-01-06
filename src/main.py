@@ -93,6 +93,7 @@ def get_ref_unique_name(nameset, unique_name):
 def getCentreDegree():
     global owner_dict
     global patent_dict
+
     # 遍历所有人
     for owner_name, owner_obj in owner_dict.items():
         validset = set()
@@ -104,7 +105,7 @@ def getCentreDegree():
         validset = validset - owner_obj.patentset
         # 获得中心度
         owner_obj.centredegrees = len(validset)
-        print(owner_name, "\t\t\t中心度为:\t", owner_obj.centredegrees)
+        print("所有人: %-60s 中心度为: %-5s" % (owner_name, owner_obj.centredegrees))
 
 
 def calOwnerCentreDegree():
