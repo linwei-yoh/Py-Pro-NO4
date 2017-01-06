@@ -44,7 +44,7 @@ unique_name_dict = {}  # 专利唯一名称字典
    name_owner  专利所有人名"""
 
 
-def addPatentToOwner(name_patent, ownerset):
+def addPatentToOwner(ownerset, name_patent):
     global owner_dict
     for owner_name in ownerset:
         if owner_name not in owner_dict:
@@ -59,11 +59,28 @@ def addPatentToOwner(name_patent, ownerset):
 
 def addRefToPatent(name_patent, name_ref):
     global patent_dict
-    if name_ref not in patent_dict:
-        new_patent = patentItem(name_ref)
-        patent_dict[name_ref] = new_patent
 
-    patent_dict[name_ref].addToRefset(name_patent)
+    # 添加引用专利对象到字典中
+    if name_patent not in patent_dict:
+        new_patent = PatentItem(name_patent)
+        patent_dict[name_patent] = new_patent
+
+    if name_ref == "":
+        return
+
+    # 先将被引用专利号转为唯一专利号
+    if name_ref in unique_name_dict:
+        unique_id = unique_name_dict[name_ref]
+    else:
+        # 未找到对应的唯一专利号
+        unique_id = name_ref
+
+    # 添加被引用专利对象到字典中 并增加其被引用属性
+    if unique_id not in patent_dict:
+        new_patent = PatentItem(unique_id)
+        patent_dict[unique_id] = new_patent
+
+    patent_dict[unique_id].addToRefset(name_patent)
 
 
 def get_ref_unique_name(nameset, unique_name):
@@ -81,16 +98,18 @@ def getCentreDegree():
         validset = set()
         # 遍历该所有人的全部专利
         for patent in owner_obj.patentset:
-            validset = validset | patent_dict[patent].refset
+            # 且该专利在专利字典中存在 即有引用过其他专利
+            if patent in patent_dict:
+                validset = validset | patent_dict[patent].refset
         validset = validset - owner_obj.patentset
         # 获得中心度
         owner_obj.centredegrees = len(validset)
-        print(owner_name, "\t中心度为:\t", owner_obj.centredegrees)
+        print(owner_name, "\t\t\t中心度为:\t", owner_obj.centredegrees)
 
 
 def calOwnerCentreDegree():
     excel_data = xlrd.open_workbook(tar_excel_path)
-    table = excel_data.sheet_by_name(u'sheet1')
+    table = excel_data.sheet_by_name(u'Sheet1')
 
     # 获得行数
     num_rows = table.nrows
@@ -117,8 +136,11 @@ def calOwnerCentreDegree():
         # 建立所有人字典
         ownerlist = lineArray[owner_index].split(';')
         ownerset = set([item.strip() for item in ownerlist])
-        addPatentToOwner(lineArray[patent_index], ownerset)
-        addRefToPatent(lineArray[patent_index], lineArray[ref_index])  # 需要将被引用的专利名称改为唯一专利名
+        addPatentToOwner(ownerset, lineArray[patent_index])
+
+        # 建立专利字典 需要将被引用的专利名称改为唯一专利名
+        # 同时建立引用专利的对象 和 被引用专利的对象
+        addRefToPatent(lineArray[patent_index], lineArray[ref_index])
 
     # 获得中心度
     getCentreDegree()
