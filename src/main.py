@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import xlrd
+from openpyxl import Workbook, load_workbook
+import re
 
-tar_excel_path = '../output.xls'
+tar_excel_path = '../xlsx/target.xlsx'
+output_path = '../xlsx/output.xlsx'
 
 
 # 所有人对象 包含所有人名称 和 所有专利集合
@@ -53,11 +55,10 @@ def addPatentToOwner(ownerset, name_patent):
         owner_dict[owner_name].addToPatentset(name_patent)
 
 
-"""name_ref 被引用的专利
-   name_patent 引用该专利的专利"""
+"""name_patent 引用该专利的专利"""
 
 
-def addRefToPatent(name_patent, name_ref):
+def addpatenttodict(name_patent):
     global patent_dict
 
     # 添加引用专利对象到字典中
@@ -65,22 +66,28 @@ def addRefToPatent(name_patent, name_ref):
         new_patent = PatentItem(name_patent)
         patent_dict[name_patent] = new_patent
 
-    if name_ref == "":
-        return
 
-    # 先将被引用专利号转为唯一专利号
-    if name_ref in unique_name_dict:
-        unique_id = unique_name_dict[name_ref]
-    else:
-        # 未找到对应的唯一专利号
-        unique_id = name_ref
+"""name_ref 被引用的专利
+   name_patent 引用该专利的专利"""
 
-    # 添加被引用专利对象到字典中 并增加其被引用属性
-    if unique_id not in patent_dict:
-        new_patent = PatentItem(unique_id)
-        patent_dict[unique_id] = new_patent
 
-    patent_dict[unique_id].addToRefset(name_patent)
+def addRefToPatent(name_patent, ref_set):
+    global patent_dict
+
+    for name_ref in ref_set:
+        # 先将被引用专利号转为唯一专利号
+        if name_ref in unique_name_dict:
+            unique_id = unique_name_dict[name_ref]
+        else:
+            # 未找到对应的唯一专利号
+            unique_id = name_ref
+
+        # 添加被引用专利对象到字典中 并增加其被引用属性
+        if unique_id not in patent_dict:
+            new_patent = PatentItem(unique_id)
+            patent_dict[unique_id] = new_patent
+
+        patent_dict[unique_id].addToRefset(name_patent)
 
 
 def get_ref_unique_name(nameset, unique_name):
@@ -94,6 +101,9 @@ def getCentreDegree():
     global owner_dict
     global patent_dict
 
+    wb = Workbook()
+    ws = wb.active
+    row_index = 1
     # 遍历所有人
     for owner_name, owner_obj in owner_dict.items():
         validset = set()
@@ -105,44 +115,73 @@ def getCentreDegree():
         validset = validset - owner_obj.patentset
         # 获得中心度
         owner_obj.centredegrees = len(validset)
+        ws.cell(row=row_index, column=1, value=owner_name)
+        ws.cell(row=row_index, column=2, value=owner_obj.centredegrees)
+        row_index += 1
         print("所有人: %-60s 中心度为: %-5s" % (owner_name, owner_obj.centredegrees))
+    wb.save(output_path)
 
 
 def calOwnerCentreDegree():
-    excel_data = xlrd.open_workbook(tar_excel_path)
-    table = excel_data.sheet_by_name(u'Sheet1')
+    print('正在读取excel文件.................')
+    wb = load_workbook(tar_excel_path)
+    sheetnames = wb.get_sheet_names()
+    ws = wb.get_sheet_by_name(sheetnames[0])
+    print('读取完成,开始数据处理.............')
 
     # 获得行数
-    num_rows = table.nrows
+    num_rows = ws.max_row
 
     # 获得标签行
-    row_index = table.row_values(0)
-    row_index = [item.strip() for item in row_index]
+    tag_row = [item.value for item in ws[1]]
+    tag_row = [item.strip() for item in tag_row]
 
     # 获得关键数据列号
-    patent_index = row_index.index('GA')  # 专利唯一名称
-    owner_index = row_index.index('AE')  # 所有人名称
-    ref_index = row_index.index('CP')  # 引用专利
-    subname_index = row_index.index('PN')  # 专利多个名称
+    patent_index = tag_row.index('GA') + 1  # 专利唯一名称
+    owner_index = tag_row.index('AE') + 1  # 所有人名称
+    ref_index = tag_row.index('CP') + 1  # 引用专利
+    subname_index = tag_row.index('PN') + 1  # 专利多个名称
 
-    # 建立两个字典
-    for i in range(1, num_rows):
-        lineArray = table.row_values(i)
+    pattern = re.compile(r'([a-zA-Z0-9]+?-[A-Za-z]\d?)\s')
 
-        # 建立唯一专利号字典
-        namelist = lineArray[subname_index].split(';')
-        nameset = set([item.strip() for item in namelist])
-        get_ref_unique_name(nameset, lineArray[patent_index])
+    # 建立两个字典 所有人-唯一专利名字典 专利名-唯一专利名字典
+    for i in range(2, num_rows):
+        # 所有人set
+        owner_str = str(ws.cell(row=i, column=owner_index).value)
+        owner_set = set([item.strip() for item in owner_str.split(';')])
+        # 专利唯一名称
+        patent_name = str(ws.cell(row=i, column=patent_index).value)
+        # 专利子名称set
+        subname_str = str(ws.cell(row=i, column=subname_index).value)
+        subname_set = set([item.strip() for item in subname_str.split(';')])
+
+        # 建立专利名-唯一专利名字典
+        get_ref_unique_name(subname_set, patent_name)
 
         # 建立所有人字典
-        ownerlist = lineArray[owner_index].split(';')
-        ownerset = set([item.strip() for item in ownerlist])
-        addPatentToOwner(ownerset, lineArray[patent_index])
+        addPatentToOwner(owner_set, patent_name)
+        print('名称一致化处理已经完成%d/%d' % (i, num_rows))
 
-        # 建立专利字典 需要将被引用的专利名称改为唯一专利名
-        # 同时建立引用专利的对象 和 被引用专利的对象
-        addRefToPatent(lineArray[patent_index], lineArray[ref_index])
+    # 建立被引用-引用字典
+    for j in range(2, num_rows):
+        # 建立专利对象
+        patent_name = str(ws.cell(row=j, column=patent_index).value)
+        addpatenttodict(patent_name)
 
+        # 建立专利引用字典 需要将被引用的专利名称改为唯一专利名
+        ref_str = str(ws.cell(row=j, column=ref_index).value)
+
+        if ref_str is None or ref_str.strip() == '':
+            pass
+        else:
+            # 获取引用正则匹配列表
+            ref_list = pattern.findall(ref_str)
+            # 不包含第一个对自己的引用
+            addRefToPatent(patent_name, set(ref_list[1:]))
+
+        print('引用关联已经完成%d/%d' % (i, num_rows))
+
+    print('开始计算中心度:')
     # 获得中心度
     getCentreDegree()
 
