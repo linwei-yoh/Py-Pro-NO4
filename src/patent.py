@@ -214,5 +214,8 @@ def init_data_from_excel():
         print('引用关联已经完成%d/%d' % (i, num_rows))
 
 
+def testfun():
+    pass
+
 if __name__ == '__main__':
     pass

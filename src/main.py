@@ -15,6 +15,5 @@
 # 9.增加所有人的集合体 公司，专利对象增加 引用集合属性
 
 
-
 if __name__ == '__main__':
-    cal_centre_degree()
+    pass
