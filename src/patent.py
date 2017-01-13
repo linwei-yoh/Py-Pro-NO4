@@ -3,10 +3,22 @@
 
 from openpyxl import Workbook, load_workbook
 import re
+import pickle
 
 tar_excel_path = '../xlsx/target.xlsx'
 output_path = '../xlsx/output.xlsx'
+pick_path = '../save.txt'
 
+
+# 1.逐个读取各个专利 获取专利名称(唯一） 和 专利所有人
+# 2.查询当前专利所有人是否已经在所有人字典中存在 否，则创建并添加 是,则添加专利名称到其专利集合中
+# 3.遍历完成，获得所有人字典 记载了全部所有人，及其所拥有的专利
+# 4.逐个读取各个专利 获取专利名称(唯一） 和 引用专利(转化为唯一专利）
+# 5.查询引用专利是否在专利字典中存在 否，则创建并添加 是,则添加专利名称到引用专利的被引用专利集合中
+# 6.遍历完成，获得专利被引用字典 记载了全部被引用专利，及其所引用该专利的专利集合
+# 7.逐个遍历所有人字典，对单个所有人的全部专利的被引用集合作并集处理，获得对此所有人的引用
+# 8.获得该并集与有该所有人拥有的专利集合的差集(集合相减)，获得有效的专利引用集合，获得中心度
+# 9.增加所有人的集合体 公司，专利对象增加 引用集合属性
 
 class GroupItem(object):
     """用于包含公司的集团对象"""
@@ -73,7 +85,7 @@ def add_patent_to_company(name_patent, company_set):
         if company_name not in company_dict:
             new_company = CompanyItem(company_name)
             company_dict[company_name] = new_company
-        company_dict[company_name].addToPatentset(name_patent)
+        company_dict[company_name].add_patent(name_patent)
 
 
 def add_patent_and_cite(name_patent, cite_ver):
@@ -120,7 +132,7 @@ def get_unique_name(names):
         result = set()
         for item in names:
             if item in unique_name_dict:
-                result.add(unique_name_dict[names])
+                result.add(unique_name_dict[item])
             else:
                 result.add(item)
         return result
@@ -133,26 +145,27 @@ def cal_centre_degree():
     global company_dict
     global patent_dict
 
+    print("开始计算中心度")
     # 遍历所有人
     for company_name, company_obj in company_dict.items():
         valid_set = set()
         # 遍历该所有人的全部专利
-        for patent in company_obj.patentset:
+        for patent in company_obj.patent_set:
             # 且该专利在专利字典中存在
             if patent in patent_dict:
                 valid_set = valid_set | patent_dict[patent].cited_set
-        valid_set = valid_set - company_obj.patentset
+        valid_set = valid_set - company_obj.patent_set
         # 获得中心度
         company_obj.centre_degrees = len(valid_set)
         # print("所有人: %-60s 中心度为: %-5s" % (company_name, company_obj.centredegrees))
 
 
-def init_data_from_excel():
+def init_data_from_excel(excel_path):
     """读取excel数据，并建立数据关联用的字典"""
     print('正在读取excel文件.................')
-    wb = load_workbook(tar_excel_path)
-    sheetnames = wb.get_sheet_names()
-    ws = wb.get_sheet_by_name(sheetnames[0])
+    wb = load_workbook(excel_path)
+    sheet_names = wb.get_sheet_names()
+    ws = wb.get_sheet_by_name(sheet_names[0])
     print('读取完成,开始数据处理.............')
 
     # 获得行数
@@ -213,9 +226,90 @@ def init_data_from_excel():
 
         print('引用关联已经完成%d/%d' % (i, num_rows))
 
+    cal_centre_degree()
 
-def testfun():
-    pass
+
+def pickle_save_dicts(path):
+    global group_dict
+    global company_dict
+    global patent_dict
+
+    print("准备保存关系字典")
+    with open(path, 'wb') as save_dicts:
+        pickle.dump(group_dict, save_dicts)
+        pickle.dump(company_dict, save_dicts)
+        pickle.dump(patent_dict, save_dicts)
+    print("保存关系字典完成")
+
+
+def pickle_read_dicts(path):
+    global group_dict
+    global company_dict
+    global patent_dict
+
+    print("准备读取关系字典")
+    with open(path, 'rb') as read_dict:
+        group_dict = pickle.load(read_dict)
+        company_dict = pickle.load(read_dict)
+        patent_dict = pickle.load(read_dict)
+    print("读取关系字典完成")
+
+
+def save_to_excel(path):
+    print("开始创建excel表格")
+    wb = Workbook()
+
+    # 表1
+    ws1 = wb.create_sheet("公司中心度")
+
+    group_name_index = 1
+    company_name_index = 2
+    degree_name_index = 3
+    sheet_row_index = 2
+
+    ws1.cell(row=1, column=group_name_index, value='集团名称')
+    ws1.cell(row=1, column=company_name_index, value='公司名称')
+    ws1.cell(row=1, column=degree_name_index, value='中心度')
+
+    for group_name, group_item in group_dict.items():
+        for company_name in group_item.company_set:
+            ws1.cell(row=sheet_row_index, column=group_name_index, value=group_name)
+            ws1.cell(row=sheet_row_index, column=company_name_index, value=company_name)
+            ws1.cell(row=sheet_row_index, column=degree_name_index, value=company_dict[company_name].centre_degrees)
+            sheet_row_index += 1
+    print("完成中心度表")
+
+    # 表2
+    ws2 = wb.create_sheet("专利引用")
+    patent_index = 1
+    patent_cited_index = 2
+    sheet_row_index = 2
+
+    ws2.cell(row=1, column=patent_index, value='唯一专利号')
+    ws2.cell(row=1, column=patent_cited_index, value='引用专利号')
+
+    for patent_name, patent_item in patent_dict.items():
+        if len(patent_item.cite_set) == 0:
+            ws2.cell(row=sheet_row_index, column=patent_index, value=patent_name)
+            ws2.cell(row=sheet_row_index, column=patent_cited_index, value='')
+        else:
+            for item_cite in patent_item.cite_set:
+                ws2.cell(row=sheet_row_index, column=patent_index, value=patent_name)
+                ws2.cell(row=sheet_row_index, column=patent_cited_index, value=item_cite)
+    print("完成专利引用表")
+
+    # 表3
+    ws3 = wb.create_sheet("公司引用")
+    # 获得该公司各个专利的引用集合的并集 - 该公司专利 获得的差集
+    for patent_name, patent_item in patent_dict.items():
+        pass
+
+    print("完成公司引用表")
+
+    wb.save(path)
+    print('excel 创建完成')
+
 
 if __name__ == '__main__':
-    pass
+    pickle_read_dicts(pick_path)
+    save_to_excel(output_path)
