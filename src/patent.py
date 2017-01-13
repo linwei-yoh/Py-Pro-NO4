@@ -38,6 +38,7 @@ class CompanyItem(object):
         self.name = name
         self.patent_set = set()
         self.centre_degrees = 0
+        self.group_name = 'None'
 
     def add_patent(self, name):
         self.patent_set.add(name)
@@ -69,23 +70,29 @@ patent_dict = {}  # 专利字典
 unique_name_dict = {}  # 专利唯一名称字典
 
 
-def add_company_to_group(com_name, group_name):
-    """建立集团-公司字典"""
+def add_one_patent(group_name, company_name, patent_name):
+    '''建立集团对象 公司对象 专利对象'''
     global group_dict
-    if group_name not in group_dict:
-        new_com = GroupItem(group_name)
-        group_dict[group_name] = new_com
-    group_dict[group_name].add_company(com_name)
-
-
-def add_patent_to_company(name_patent, company_set):
-    """建立公司-专利字典"""
     global company_dict
-    for company_name in company_set:
-        if company_name not in company_dict:
-            new_company = CompanyItem(company_name)
-            company_dict[company_name] = new_company
-        company_dict[company_name].add_patent(name_patent)
+    global patent_dict
+
+    if group_name not in group_dict:
+        new_group = GroupItem(group_name)
+        group_dict[group_name] = new_group
+    group_item = group_dict[group_name]
+
+    if company_name not in company_dict:
+        new_company = CompanyItem(company_name)
+        company_dict[company_name] = new_company
+    company_item = company_dict[company_name]
+
+    if patent_name not in patent_dict:
+        new_patent = PatentItem(patent_name)
+        patent_dict[patent_name] = new_patent
+
+    group_item.add_company(company_name)
+    company_item.group_name = group_name
+    company_item.add_patent(patent_name)
 
 
 def add_patent_and_cite(name_patent, cite_ver):
@@ -143,25 +150,27 @@ def get_unique_name(names):
 def cal_centre_degree():
     """中心度计算"""
     global company_dict
-    global patent_dict
 
     print("开始计算中心度")
-    # 遍历所有人
+    # 遍历公司
     for company_name, company_obj in company_dict.items():
-        valid_set = set()
-        # 遍历该所有人的全部专利
+        valid_list = []
+        # 遍历该公司的全部专利 获得被引用累计列表
         for patent in company_obj.patent_set:
-            # 且该专利在专利字典中存在
-            if patent in patent_dict:
-                valid_set = valid_set | patent_dict[patent].cited_set
-        valid_set = valid_set - company_obj.patent_set
+            valid_list += list(patent_dict[patent].cited_set)
+        # 去除列表中该公司自身专利
+        valid_list = [ele for ele in valid_list if ele not in company_obj.patent_set]
         # 获得中心度
-        company_obj.centre_degrees = len(valid_set)
+        company_obj.centre_degrees = len(valid_list)
         # print("所有人: %-60s 中心度为: %-5s" % (company_name, company_obj.centredegrees))
 
 
 def init_data_from_excel(excel_path):
     """读取excel数据，并建立数据关联用的字典"""
+    global group_dict
+    global company_dict
+    global patent_dict
+
     print('正在读取excel文件.................')
     wb = load_workbook(excel_path)
     sheet_names = wb.get_sheet_names()
@@ -197,12 +206,10 @@ def init_data_from_excel(excel_path):
         # 建立专利名-唯一专利名字典
         set_unique_name(subname_set, patent_name)
 
-        # 建立所有人-唯一专利名字典
-        add_patent_to_company(patent_name, company_set)
-
-        # 建立集团-所有人字典
-        for company in company_set:
-            add_company_to_group(company, pattern_com.findall(company)[0])
+        # 建立集团 所有人 唯一专利名对象 字典 对象关联
+        for company_name in company_set:
+            group_name = pattern_com.findall(company_name)[0]
+            add_one_patent(group_name, company_name, patent_name)
 
         print('名称一致化处理已经完成%d/%d' % (i, num_rows))
 
@@ -298,11 +305,9 @@ def save_to_excel(path):
                 ws2.cell(row=sheet_row_index, column=patent_cited_index, value=item_cite)
     print("完成专利引用表")
 
-    # 表3
+    # 表3 公司间的引用
     ws3 = wb.create_sheet("公司引用")
-    # 获得该公司各个专利的引用集合的并集 - 该公司专利 获得的差集
-    for patent_name, patent_item in patent_dict.items():
-        pass
+
 
     print("完成公司引用表")
 
@@ -311,5 +316,7 @@ def save_to_excel(path):
 
 
 if __name__ == '__main__':
+    # init_data_from_excel(tar_excel_path)
+    # pickle_save_dicts(pick_path)
     pickle_read_dicts(pick_path)
     save_to_excel(output_path)
