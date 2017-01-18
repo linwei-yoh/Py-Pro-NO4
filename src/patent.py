@@ -51,6 +51,7 @@ class PatentItem(object):
         self.name = name
         self.cited_set = set()
         self.cite_set = set()
+        self.owner_set = set()
 
     # 该专利被引用专利集合
     def add_cited_set(self, name):
@@ -63,6 +64,9 @@ class PatentItem(object):
         elif isinstance(name, set):
             self.cite_set.update(name)
 
+    def add_owner(self, company_name):
+        self.owner_set.add(company_name)
+
 
 group_dict = {}  # 集团字典
 company_dict = {}  # 所有人字典
@@ -70,7 +74,7 @@ patent_dict = {}  # 专利字典
 unique_name_dict = {}  # 专利唯一名称字典
 
 
-def add_one_patent(group_name, company_name, patent_name):
+def add_one_info(group_name, company_name, patent_name):
     '''建立集团对象 公司对象 专利对象'''
     global group_dict
     global company_dict
@@ -93,6 +97,7 @@ def add_one_patent(group_name, company_name, patent_name):
     group_item.add_company(company_name)
     company_item.group_name = group_name
     company_item.add_patent(patent_name)
+    patent_dict[patent_name].add_owner(company_name)
 
 
 def add_patent_and_cite(name_patent, cite_ver):
@@ -209,7 +214,7 @@ def init_data_from_excel(excel_path):
         # 建立集团 所有人 唯一专利名对象 字典 对象关联
         for company_name in company_set:
             group_name = pattern_com.findall(company_name)[0]
-            add_one_patent(group_name, company_name, patent_name)
+            add_one_info(group_name, company_name, patent_name)
 
         print('名称一致化处理已经完成%d/%d' % (i, num_rows))
 
@@ -266,13 +271,14 @@ def save_to_excel(path):
     print("开始创建excel表格")
     wb = Workbook()
 
+    sheet_row_index = 2
+
     # 表1
     ws1 = wb.create_sheet("公司中心度")
 
     group_name_index = 1
     company_name_index = 2
     degree_name_index = 3
-    sheet_row_index = 2
 
     ws1.cell(row=1, column=group_name_index, value='集团名称')
     ws1.cell(row=1, column=company_name_index, value='公司名称')
@@ -299,24 +305,109 @@ def save_to_excel(path):
         if len(patent_item.cite_set) == 0:
             ws2.cell(row=sheet_row_index, column=patent_index, value=patent_name)
             ws2.cell(row=sheet_row_index, column=patent_cited_index, value='')
+            sheet_row_index += 1
         else:
             for item_cite in patent_item.cite_set:
                 ws2.cell(row=sheet_row_index, column=patent_index, value=patent_name)
                 ws2.cell(row=sheet_row_index, column=patent_cited_index, value=item_cite)
+                sheet_row_index += 1
+
     print("完成专利引用表")
 
     # 表3 公司间的引用
     ws3 = wb.create_sheet("公司引用")
+    sheet_row_index = 2
 
+    c_name_index = 1
+    ref_name_index = 2
+    count_index = 3
+
+    ws3.cell(row=1, column=c_name_index, value='公司名')
+    ws3.cell(row=1, column=ref_name_index, value='引用公司名')
+    ws3.cell(row=1, column=count_index, value='引用次数')
+
+    # 遍历每一个公司
+    for company_name, company_item in company_dict.items():
+        cite_recode = {}
+        tmp_list = []
+        # 遍历它的每个专利 获得该专利的引用专利列表
+        for patent_name in company_item.patent_set:
+            tmp_list += list(patent_dict[patent_name].cite_set)
+
+        # 通过引用专利列表获得引用公司列表
+        com_list = []
+        for p_name in tmp_list:
+            com_list += list(patent_dict[p_name].owner_set)
+
+        # 获得对其他公司的引用统计字典
+        for c_name in com_list:
+            if c_name != company_name:
+                if c_name not in cite_recode:
+                    cite_recode[c_name] = 1
+                else:
+                    cite_recode[c_name] += 1
+
+        for c_name, count in cite_recode.items():
+            ws3.cell(row=sheet_row_index, column=c_name_index, value=company_name)
+            ws3.cell(row=sheet_row_index, column=ref_name_index, value=c_name)
+            ws3.cell(row=sheet_row_index, column=count_index, value=count)
+            sheet_row_index += 1
 
     print("完成公司引用表")
+
+    # 表4 集团引用
+    ws4 = wb.create_sheet("集团引用引用")
+    sheet_row_index = 2
+
+    g_name_index = 1
+    ref_name_index = 2
+    count_index = 3
+
+    ws4.cell(row=1, column=g_name_index, value='集团名')
+    ws4.cell(row=1, column=ref_name_index, value='引用集团名')
+    ws4.cell(row=1, column=count_index, value='引用次数')
+
+    # 遍历集团
+    for group_name, group_item in group_dict.items():
+        cite_recode = {}
+        com_list = []
+        # 遍历集团的公司
+        for c_name in group_item.company_set:
+            tmp_list = []
+            # 遍历它的每个专利 获得该专利的引用专利列表
+            for patent_name in company_dict[c_name].patent_set:
+                tmp_list += list(patent_dict[patent_name].cite_set)
+
+            # 通过引用专利列表获得引用公司列表
+            for p_name in tmp_list:
+                com_list += list(patent_dict[p_name].owner_set)
+
+        # 遍历引用公司列表
+        for c_name in com_list:
+            # 筛选出不属于本集团的公司 并计数 获得本公司的统计字典
+            g_name = company_dict[c_name].group_name
+            if g_name != group_name:
+                if g_name not in cite_recode:
+                    cite_recode[g_name] = 1
+                else:
+                    cite_recode[g_name] += 1
+
+        for g_name, count in cite_recode.items():
+            ws4.cell(row=sheet_row_index, column=c_name_index, value=group_name)
+            ws4.cell(row=sheet_row_index, column=ref_name_index, value=g_name)
+            ws4.cell(row=sheet_row_index, column=count_index, value=count)
+            sheet_row_index += 1
+    print("完成集团引用表")
 
     wb.save(path)
     print('excel 创建完成')
 
 
 if __name__ == '__main__':
+    # 只用运行其中一个部分即可
+    # 第一部分用于读取与创建数据关联
     # init_data_from_excel(tar_excel_path)
     # pickle_save_dicts(pick_path)
+    # 第二部分用于数据统计处理
     pickle_read_dicts(pick_path)
     save_to_excel(output_path)
