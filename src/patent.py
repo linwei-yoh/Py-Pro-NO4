@@ -220,6 +220,7 @@ def pickle_save_dicts(path):
         pickle.dump(group_dict, save_dicts)
         pickle.dump(company_dict, save_dicts)
         pickle.dump(patent_dict, save_dicts)
+        pickle.dump(unique_name_dict, save_dicts)
     print("保存关系字典完成")
 
 
@@ -227,12 +228,14 @@ def pickle_read_dicts(path):
     global group_dict
     global company_dict
     global patent_dict
+    global unique_name_dict
 
     print("准备读取关系字典")
     with open(path, 'rb') as read_dict:
         group_dict = pickle.load(read_dict)
         company_dict = pickle.load(read_dict)
         patent_dict = pickle.load(read_dict)
+        unique_name_dict = pickle.load(read_dict)
     print("读取关系字典完成")
 
 
@@ -289,6 +292,30 @@ def create_sheet_two(wb):
                 sheet_row_index += 1
 
     print("完成专利引用表")
+
+
+def create_sheet_two_without_unknow(wb):
+    ws2_1 = wb.create_sheet("有效专利引用表")
+    sheet_row_index = 2
+    patent_index = 1
+    patent_cited_index = 2
+
+    ws2_1.cell(row=1, column=patent_index, value='唯一专利号')
+    ws2_1.cell(row=1, column=patent_cited_index, value='引用专利号')
+
+    for patent_name, patent_item in patent_dict.items():
+        if len(patent_item.cite_set) == 0:
+            ws2_1.cell(row=sheet_row_index, column=patent_index, value=patent_name)
+            ws2_1.cell(row=sheet_row_index, column=patent_cited_index, value='')
+            sheet_row_index += 1
+        else:
+            for item_cite in patent_item.cite_set:
+                if item_cite in patent_dict:
+                    ws2_1.cell(row=sheet_row_index, column=patent_index, value=patent_name)
+                    ws2_1.cell(row=sheet_row_index, column=patent_cited_index, value=item_cite)
+                    sheet_row_index += 1
+
+    print("完成有效专利引用表")
 
 
 def create_sheet_three(wb):
@@ -391,6 +418,7 @@ def save_to_excel(path):
 
     # 表2 专利引用表
     create_sheet_two(wb)
+    create_sheet_two_without_unknow(wb)
 
     # 表3 公司引用表
     create_sheet_three(wb)
