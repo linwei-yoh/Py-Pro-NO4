@@ -220,7 +220,6 @@ def pickle_save_dicts(path):
         pickle.dump(group_dict, save_dicts)
         pickle.dump(company_dict, save_dicts)
         pickle.dump(patent_dict, save_dicts)
-        pickle.dump(unique_name_dict, save_dicts)
     print("保存关系字典完成")
 
 
@@ -235,7 +234,6 @@ def pickle_read_dicts(path):
         group_dict = pickle.load(read_dict)
         company_dict = pickle.load(read_dict)
         patent_dict = pickle.load(read_dict)
-        unique_name_dict = pickle.load(read_dict)
     print("读取关系字典完成")
 
 
